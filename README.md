@@ -3,7 +3,7 @@
 **MLY1101 Machine Learning · Evaluación Parcial N°2 · Caso A**
 **Integrantes:** Nicolás Garrido · Karen Manríquez · Felipe Espinoza
 
-Este es el informe de nuestro proyecto. Todo el código está en [`notebooks/churn_telco.ipynb`](notebooks/churn_telco.ipynb) y los gráficos en [`images/`](images/).
+Este es el informe de nuestro proyecto. Todo el código está en [`notebooks/churn_telco_ML.ipynb`](notebooks/churn_telco_ML.ipynb) y los gráficos en [`images/`](images/).
 
 ---
 
@@ -107,6 +107,10 @@ Los datos están **desbalanceados**: 73,5 % se queda y 26,5 % se va. Por eso no 
 - El peor caso es un cliente con **contrato mes a mes y menos de 6 meses**.
 - `TotalCharges` tiene una correlación de **0,83 con `tenure`**, así que aportan casi la misma información.
 
+![Churn por tramo de antigüedad](images/14_churn_por_tramo_antiguedad.png)
+
+Agrupando la antigüedad por tramos *(aporte de Karen)*, casi **la mitad (47 %)** de los clientes con 12 meses o menos se va, mientras que en los que llevan más de 4 años baja a **menos del 10 %**. El primer año es el momento clave para retenerlos.
+
 ### Preparación
 1. Eliminamos `customerID` porque no sirve para predecir.
 2. Sacamos `gender` del modelo porque no influye en el churn y es un dato sensible. Solo la usamos al final para revisar sesgos.
@@ -123,8 +127,9 @@ Los datos están **desbalanceados**: 73,5 % se queda y 26,5 % se va. Por eso no 
 | Dummy | Lo usamos como base: siempre predice "No". Los otros modelos tienen que superarlo. |
 | **Regresión Logística** | Es simple y se puede interpretar con sus coeficientes. |
 | **Random Forest** | Puede captar relaciones más complejas entre las variables. |
+| Gradient Boosting (control) | Un modelo más complejo, para comprobar si mejoraba los resultados *(aporte de Karen)*. |
 
-- En los dos usamos `class_weight="balanced"` por el desbalance.
+- En todos usamos `class_weight="balanced"` por el desbalance.
 - Buscamos los mejores hiperparámetros con **GridSearchCV** (5 folds, métrica ROC-AUC).
 - En vez de usar 0,5 como umbral, elegimos el que daba el mejor F1 con un recall de al menos 0,75 (0,557 para la logística y 0,541 para el Random Forest).
 
@@ -135,11 +140,24 @@ Los datos están **desbalanceados**: 73,5 % se queda y 26,5 % se va. Por eso no 
 | Dummy | 0,735 | 0,000 | 0,000 | 0,000 | 0,500 | 1,05 |
 | Regresión Logística | 0,752 | 0,524 | 0,733 | 0,611 | 0,839 | 2,51 |
 | **Random Forest** | **0,765** | **0,541** | **0,759** | **0,632** | **0,846** | 2,49 |
+| Gradient Boosting (control) | 0,752 | 0,521 | 0,789 | 0,628 | 0,845 | 2,51 |
 
 ![ROC y comparación](images/07_roc_pr_comparacion.png)
 ![Matrices de confusión](images/08_matrices_confusion.png)
 
-**Elegimos el Random Forest** porque tuvo el mejor ROC-AUC en validación cruzada (0,848 vs 0,845) y es el único que cumple el KPI de recall. La diferencia con la logística es chica, así que la usamos para explicar qué variables influyen.
+**Elegimos el Random Forest** porque, de los dos modelos principales, tuvo el mejor ROC-AUC en validación cruzada (0,848 vs 0,845) y es el único que cumple el KPI de recall. La diferencia con la logística es chica, así que la usamos para explicar qué variables influyen.
+
+**¿Un modelo más complejo mejora?** El Gradient Boosting quedó prácticamente igual: 0,8482 en validación cruzada vs 0,8476 del Random Forest, y en test gana en algunas métricas (recall) y pierde en otras (ROC-AUC, F1, precisión). Como no mejora de forma clara, nos quedamos con el Random Forest, que es más fácil de explicar. El límite lo ponen los datos, no el algoritmo.
+
+**¿Hay sobreajuste?** *(aporte de Karen)*
+
+| Modelo | ROC-AUC train | ROC-AUC CV | ROC-AUC test | Diferencia train − test |
+|---|---|---|---|---|
+| Regresión Logística | 0,848 | 0,845 | 0,839 | 0,009 |
+| Random Forest | 0,880 | 0,848 | 0,846 | 0,034 |
+| Gradient Boosting (control) | 0,863 | 0,848 | 0,845 | 0,018 |
+
+Los resultados en validación cruzada y en test son muy parecidos, así que los modelos generalizan bien. El Random Forest es el que más se ajusta a train, pero la diferencia (0,034) es pequeña.
 
 ![Importancia de variables](images/09_importancia_variables.png)
 
@@ -213,15 +231,16 @@ telco_churn_ml/
 │   ├── Telco_Customer_Churn_Dataset.csv   ← datos originales
 │   └── scoring_clientes_test.csv          ← clientes de test ordenados por riesgo
 ├── notebooks/
-│   └── churn_telco.ipynb      ← notebook con todo el desarrollo
+│   └── churn_telco_ML.ipynb   ← notebook con todo el desarrollo
 ├── models/
 │   ├── modelo_churn_final.joblib    ← modelo final (Random Forest con su preprocesamiento)
 │   ├── kmeans_segmentacion.joblib   ← modelo K-Means
 │   ├── config_modelo.json           ← umbral, variables y métricas
 │   └── metricas_test.csv            ← comparación de modelos
 ├── images/                    ← gráficos del notebook
-└── presentacion/
-    └── guion_presentacion.md  ← guion para la presentación
+└── anexo_karen/               ← análisis complementario (ver su README)
+    ├── notebooks/telco_churn.ipynb
+    └── src/                   ← preprocessing.py y modeling.py
 ```
 
 ## Cómo ejecutarlo
@@ -230,6 +249,6 @@ telco_churn_ml/
    ```bash
    pip install -r requirements.txt
    ```
-2. Abrir `notebooks/churn_telco.ipynb` en Jupyter y ejecutar todas las celdas (*Kernel → Restart & Run All*).
+2. Abrir `notebooks/churn_telco_ML.ipynb` en Jupyter y ejecutar todas las celdas (*Kernel → Restart & Run All*).
 
 El notebook usa rutas relativas y `random_state = 42`, así que siempre da los mismos resultados. Al ejecutarlo se vuelven a crear los gráficos y los archivos de `models/`.

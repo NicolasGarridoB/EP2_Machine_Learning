@@ -1,0 +1,8 @@
+__pycache__/
+.ipynb_checkpoints/
+.venv/
+# Salidas generadas por el notebook del anexo
+anexo_karen/images/
+anexo_karen/models/
+anexo_karen/reports/
+anexo_karen/data/
