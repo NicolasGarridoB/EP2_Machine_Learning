@@ -1,239 +1,205 @@
-# Predicción de abandono de clientes (Telco Customer Churn)
+# Predicción de abandono de clientes — Telco Customer Churn
 
-**MLY1101 – Machine Learning · Evaluación Parcial N°2 · Caso A**
+**MLY1101 Machine Learning · Evaluación Parcial N°2 · Caso A**
 **Integrantes:** Nicolás Garrido · Karen Manríquez · Felipe Espinoza
-**Metodología:** CRISP-DM · **Lenguaje:** Python 3 (pandas, scikit-learn)
 
-> Informe técnico reproducible del proyecto. Todo el código está en [`notebooks/churn_telco.ipynb`](notebooks/churn_telco.ipynb) y los gráficos en [`images/`](images/).
-
----
-
-## Resumen ejecutivo
-
-- La compañía pierde al **26,5 %** de sus clientes; esos clientes representan **USD 139.131 de ingreso mensual (30,5 % del total)**.
-- Se entrenaron y compararon dos modelos supervisados. El **Random Forest** (modelo final) detecta al **76 % de los clientes que abandonan** con **ROC-AUC = 0,846** en datos no vistos, y el 20 % de clientes con mayor score concentra **2,5 veces** más churn que el promedio.
-- Una segmentación **K-Means (k = 4)** revela que el segmento **“Fibra mes a mes”** (31 % de la cartera) tiene **54 % de churn** y concentra **≈ 72 % del ingreso en riesgo**.
-- Una campaña dirigida por el modelo captura el **78 % del ingreso en riesgo** contactando solo al **37 %** de los clientes y genera un beneficio neto estimado **44 % mayor** que contactar a todos.
-- Principales impulsores del churn: **contrato mes a mes, baja antigüedad, fibra óptica, falta de soporte técnico/seguridad online y pago con cheque electrónico.**
+Este es el informe de nuestro proyecto. Todo el código está en [`notebooks/churn_telco.ipynb`](notebooks/churn_telco.ipynb) y los gráficos en [`images/`](images/).
 
 ---
 
-## 1. Descripción del problema de negocio
+## Resumen
 
-Una empresa de telecomunicaciones registra una alta tasa de abandono de clientes (*churn*). Captar un cliente nuevo cuesta considerablemente más que retener uno existente, y hoy las acciones de retención son reactivas (se actúa cuando el cliente ya pidió la baja) o masivas (se ofrece lo mismo a todos, con alto costo).
+- El **26,5 %** de los clientes abandona la empresa, lo que equivale a **USD 139.131 al mes** (30,5 % del ingreso).
+- Probamos dos modelos y el mejor fue **Random Forest**: detecta al **76 %** de los clientes que se van y tiene un **ROC-AUC de 0,846**.
+- Con **K-Means** encontramos 4 grupos de clientes. El grupo **"Fibra mes a mes"** tiene **54 % de churn** y concentra cerca del **72 % del ingreso en riesgo**.
+- Si se usa el modelo para elegir a quién contactar, se llega solo al **37 %** de los clientes y se recupera el **78 % del ingreso en riesgo**.
 
-**Pregunta de negocio:** ¿qué clientes tienen mayor probabilidad de abandonar en el próximo período, qué los caracteriza y cómo priorizar las acciones de retención?
+---
 
-**Formulación como problema de ML:**
-- **Clasificación binaria supervisada:** predecir `Churn` (Yes/No) a partir del perfil, servicios y condiciones de cuenta del cliente.
-- **Aprendizaje no supervisado (clustering):** segmentar la cartera para diseñar acciones diferenciadas por grupo.
+## 1. Problema de negocio
 
-## 2. Objetivos del proyecto
+Una empresa de telecomunicaciones está perdiendo muchos clientes. Conseguir un cliente nuevo cuesta más que mantener uno, así que la empresa necesita saber **qué clientes tienen más riesgo de irse** para ofrecerles algo antes de que se vayan.
 
-**Objetivo general:** desarrollar un modelo de Machine Learning que identifique a los clientes con alta probabilidad de abandono, para focalizar las campañas de retención y reducir la pérdida de ingresos.
+Lo planteamos como un problema de **clasificación**: predecir si un cliente va a abandonar (`Churn` = Yes o No). Además usamos **clustering** para separar a los clientes en grupos y ver cuáles son más riesgosos.
+
+## 2. Objetivos
+
+**Objetivo general:** crear un modelo que identifique a los clientes con más probabilidad de abandonar, para enfocar las campañas de retención.
 
 **Objetivos específicos:**
-1. Analizar los datos para identificar patrones, problemas de calidad y variables asociadas al churn (EDA).
-2. Preparar y transformar los datos de forma reproducible y sin fuga de información.
-3. Implementar y comparar **dos modelos supervisados** (Regresión Logística y Random Forest) con validación cruzada y ajuste de hiperparámetros.
-4. Aplicar **K-Means** para descubrir segmentos de clientes y relacionarlos con el riesgo de abandono.
-5. Traducir las métricas en impacto económico y recomendaciones de negocio, evaluando además el impacto ético del modelo.
+1. Hacer un análisis exploratorio para encontrar qué variables se relacionan con el churn.
+2. Limpiar y preparar los datos para los modelos.
+3. Entrenar y comparar dos modelos supervisados: Regresión Logística y Random Forest.
+4. Agrupar a los clientes con K-Means.
+5. Interpretar los resultados pensando en el negocio y revisar si el modelo tiene sesgos.
 
-## 3. Definición de KPIs
+## 3. KPIs
 
-| Tipo | KPI | Por qué | Meta | Resultado (test) |
-|---|---|---|---|---|
-| Modelo | **Recall** de la clase churn | Un churner no detectado es ingreso perdido; es el error más caro | ≥ 0,75 | **0,759 ✓** |
-| Modelo | **ROC-AUC** | Capacidad de ordenar clientes por riesgo, independiente del umbral | ≥ 0,80 | **0,846 ✓** |
-| Modelo | **Lift top 20 %** | Cuánto mejor que el azar es contactar al 20 % de mayor riesgo | ≥ 2,0 | **2,49 ✓** |
-| Negocio | **Tasa de churn** | Indicador principal que el proyecto busca reducir | Línea base 26,5 % → reducir | Línea base medida |
-| Negocio | **% del ingreso mensual en riesgo capturado** | Mide si el modelo apunta a los clientes que más valen | ≥ 70 % | **78 % ✓** |
-| Negocio | **Beneficio neto de la campaña** | Ingreso retenido − costo de contactar | > “contactar a todos” | **+44 % ✓** |
-| Ética | **Diferencia de recall por género** | Equidad del modelo | < 5 p.p. | 5,9 p.p., no significativa (p = 0,18) ⚠ |
+| KPI | Por qué lo usamos | Meta | Resultado |
+|---|---|---|---|
+| Recall de churn | Lo más caro es no detectar a un cliente que se va | ≥ 0,75 | **0,759 ✓** |
+| ROC-AUC | Mide qué tan bien el modelo ordena a los clientes por riesgo | ≥ 0,80 | **0,846 ✓** |
+| Lift top 20 % | Cuánto mejor es contactar al 20 % más riesgoso que elegir al azar | ≥ 2,0 | **2,49 ✓** |
+| % del ingreso en riesgo capturado | Que el modelo encuentre a los clientes que más pagan | ≥ 70 % | **78 % ✓** |
+| Beneficio de la campaña | Que convenga más que contactar a todos | Mayor | **+44 % ✓** |
+| Diferencia de recall por género | Que el modelo funcione igual para hombres y mujeres | < 5 puntos | 5,9 puntos, no significativa ⚠ |
 
-## 4. Descripción de las fuentes de datos
+## 4. Fuente de datos
 
-| Atributo | Detalle |
-|---|---|
-| Fuente | *Telco Customer Churn* — IBM Sample Data Sets (publicado en Kaggle), entregado por la asignatura |
-| Archivo | [`data/Telco_Customer_Churn_Dataset.csv`](data/Telco_Customer_Churn_Dataset.csv) |
-| Tamaño | 7.043 filas (clientes) × 21 columnas |
-| Granularidad | 1 fila = 1 cliente; `Churn` indica si abandonó en el último mes |
+Usamos el dataset **Telco Customer Churn** (IBM, publicado en Kaggle) que entregó la asignatura: [`data/Telco_Customer_Churn_Dataset.csv`](data/Telco_Customer_Churn_Dataset.csv).
 
-| Grupo | Variables |
+Tiene **7.043 clientes y 21 columnas**:
+
+| Tipo | Variables |
 |---|---|
 | Identificador | `customerID` |
-| Demográficas | `gender`, `SeniorCitizen` (0/1), `Partner`, `Dependents` |
-| Cuenta | `tenure` (meses), `Contract`, `PaperlessBilling`, `PaymentMethod`, `MonthlyCharges`, `TotalCharges` |
+| Datos del cliente | `gender`, `SeniorCitizen`, `Partner`, `Dependents` |
+| Cuenta | `tenure` (meses como cliente), `Contract`, `PaperlessBilling`, `PaymentMethod`, `MonthlyCharges`, `TotalCharges` |
 | Servicios | `PhoneService`, `MultipleLines`, `InternetService`, `OnlineSecurity`, `OnlineBackup`, `DeviceProtection`, `TechSupport`, `StreamingTV`, `StreamingMovies` |
-| Objetivo | `Churn` (Yes / No) |
+| Objetivo | `Churn` (si el cliente se fue el último mes) |
 
-## 5. Metodología utilizada (CRISP-DM)
+## 5. Metodología (CRISP-DM)
 
-```
- Comprensión del negocio → Comprensión de los datos → Preparación → Modelado → Evaluación → Despliegue
-          ↑_________________________________________________________________________|
-```
+Seguimos las 6 fases de CRISP-DM:
 
-| Fase | Qué se hizo | Dónde |
-|---|---|---|
-| 1. Comprensión del negocio | Problema, objetivos, KPIs y supuestos económicos | README §1–3 · Notebook §1 |
-| 2. Comprensión de los datos | Calidad de datos, distribución del objetivo, análisis univariado y bivariado, correlaciones | README §6 · Notebook §2 |
-| 3. Preparación de los datos | Limpieza, recodificación, selección de variables, One-Hot, escalado, partición estratificada, `Pipeline` | README §7 · Notebook §3 |
-| 4. Modelado | Regresión Logística y Random Forest con `GridSearchCV` (5 folds); K-Means para segmentación | README §8–9 · Notebook §4–5 |
-| 5. Evaluación | Métricas técnicas en test, umbral, interpretabilidad, impacto económico, auditoría ética | README §10–11 · Notebook §6 |
-| 6. Despliegue | Modelo y segmentador serializados (`joblib`), scoring de clientes priorizado | README §12 · Notebook §7 |
+1. **Comprensión del negocio:** definimos el problema, los objetivos y los KPIs.
+2. **Comprensión de los datos:** revisamos la calidad de los datos e hicimos el EDA.
+3. **Preparación de los datos:** limpieza, selección de variables, codificación, escalado y división train/test.
+4. **Modelado:** Regresión Logística y Random Forest (supervisados) y K-Means (no supervisado).
+5. **Evaluación:** métricas en test, impacto en el negocio y revisión ética.
+6. **Despliegue:** guardamos el modelo y una lista de clientes ordenada por riesgo.
 
-El proceso fue **iterativo**: p. ej., tras ver en el modelado que `TotalCharges` distorsionaba los coeficientes de la regresión logística se volvió a la fase de preparación para excluirla.
+No fue un proceso lineal: por ejemplo, al revisar los coeficientes del modelo nos dimos cuenta de que `TotalCharges` causaba problemas y volvimos a la preparación para sacarla.
 
-## 6. Análisis exploratorio de los datos (EDA)
+## 6. Preparación y análisis exploratorio (EDA)
 
-### 6.1 Calidad de datos
+### Calidad de los datos
+- No hay valores nulos ni filas duplicadas.
+- `TotalCharges` venía como texto y tenía **11 valores vacíos**. Todos eran clientes con `tenure = 0`, o sea, clientes nuevos que todavía no habían pagado. Por eso los reemplazamos por **0**.
+- No encontramos outliers raros.
 
-| Revisión | Resultado | Tratamiento |
-|---|---|---|
-| Nulos explícitos | 0 | — |
-| Duplicados (filas / `customerID`) | 0 / 0 | — |
-| `TotalCharges` como texto | 11 registros con espacio en blanco, **todos con `tenure = 0`** (clientes nuevos aún no facturados) | Convertir a numérico e imputar **0** (no es un faltante aleatorio) |
-| Codificación inconsistente | `SeniorCitizen` 0/1 vs Yes/No en el resto | Recodificar a Yes/No |
-| Categorías redundantes | “No internet service”, “No phone service” | Recodificar a “No” |
-| Outliers | Rangos de negocio válidos (tenure 0–72, cargos 18–119 USD) | Se conservan |
-
-### 6.2 Variable objetivo
-El dataset está **desbalanceado: 73,5 % No / 26,5 % Yes**. Por eso no se usa *accuracy* como métrica principal (un modelo que siempre dice “No” obtiene 73,5 %), se estratifica la partición y se usa `class_weight="balanced"`.
+### Variable objetivo
+Los datos están **desbalanceados**: 73,5 % se queda y 26,5 % se va. Por eso no usamos el accuracy como métrica principal: un modelo que siempre diga "No" tendría 73,5 % de accuracy sin detectar a nadie.
 
 ![Distribución churn](images/01_distribucion_churn.png)
 
-### 6.3 Patrones identificados
+### Lo que encontramos
 
 ![Numéricas vs churn](images/02_numericas_vs_churn.png)
 
-- **Antigüedad:** mediana de 10 meses en quienes abandonan vs 38 en quienes se quedan. El riesgo se concentra en el primer año.
-- **Cargo mensual:** quienes abandonan pagan más (mediana USD 80 vs 64).
+- Los clientes que se van llevan **poco tiempo** en la empresa (mediana de 10 meses vs 38).
+- Además pagan **más al mes** (mediana de USD 80 vs 64).
 
-![Tasa de churn por variable categórica](images/04_tasa_churn_categoricas.png)
+![Tasa de churn por variable](images/04_tasa_churn_categoricas.png)
 
-| Variable | Categoría de mayor riesgo | Churn | Comparación |
+| Variable | Categoría con más churn | Churn | Comparación |
 |---|---|---|---|
-| `Contract` | Month-to-month | 43 % | 11 % (1 año), 3 % (2 años) |
-| `InternetService` | Fiber optic | 42 % | 19 % DSL, 7 % sin internet |
-| `OnlineSecurity` / `TechSupport` | No | 42 % | 15 % con el servicio |
-| `PaymentMethod` | Electronic check | 45 % | 15–19 % otros métodos |
-| `SeniorCitizen` | Sí | 42 % | 24 % |
-| `Partner` / `Dependents` | No | 33 % / 31 % | 20 % / 15 % |
-| `gender`, `PhoneService` | — | ≈ igual | diferencia < 2 p.p. → **no relevantes** |
+| Contrato | Mes a mes | 43 % | 11 % un año, 3 % dos años |
+| Internet | Fibra óptica | 42 % | 19 % DSL |
+| Seguridad online / Soporte técnico | No tiene | 42 % | 15 % si lo tiene |
+| Método de pago | Cheque electrónico | 45 % | 15–19 % los demás |
+| Adulto mayor | Sí | 42 % | 24 % |
+
+`gender` y `PhoneService` casi no cambian el churn.
 
 ![Interacciones](images/05_interacciones.png)
 
-- El churn cae con la antigüedad dentro de cada tipo de contrato; el peor caso es **mes a mes con menos de 6 meses**.
-- La fibra sin soporte técnico es la combinación más riesgosa.
-- `TotalCharges` tiene correlación 0,83 con `tenure` (**multicolinealidad**).
+- El peor caso es un cliente con **contrato mes a mes y menos de 6 meses**.
+- `TotalCharges` tiene una correlación de **0,83 con `tenure`**, así que aportan casi la misma información.
 
-### 6.4 Variables relevantes (ranking por diferencia de tasa de churn entre categorías)
-`Contract` (40 p.p.) > `InternetService` (35) > `OnlineSecurity` (34) > `TechSupport` (34) > `OnlineBackup` (33) > `DeviceProtection` (32) > `PaymentMethod` (30) > … > `gender` (0,8).
+### Preparación
+1. Eliminamos `customerID` porque no sirve para predecir.
+2. Sacamos `gender` del modelo porque no influye en el churn y es un dato sensible. Solo la usamos al final para revisar sesgos.
+3. Sacamos `TotalCharges` por la alta correlación con `tenure`. Comprobamos que sin ella el modelo funciona igual (ROC-AUC de 0,846 a 0,845).
+4. Cambiamos "No internet service" y "No phone service" por "No".
+5. Hicimos One-Hot Encoding a las variables categóricas y escalamos las numéricas con `StandardScaler`.
+6. Dividimos en **80 % train y 20 % test** con `stratify` para mantener la proporción de churn.
+7. Pusimos todo en un `Pipeline` para que el preprocesamiento aprenda solo de los datos de train.
 
-## 7. Preparación y transformación de los datos
+## 7. Modelos supervisados
 
-| Paso | Decisión | Justificación |
-|---|---|---|
-| Limpieza | `TotalCharges` → numérico, blancos = 0 | Clientes con `tenure = 0` |
-| Exclusión | `customerID` | Identificador, sin valor predictivo; dato personal |
-| Exclusión ética | `gender` | Atributo protegido sin poder predictivo (EDA); se usa solo para auditar sesgo |
-| Exclusión técnica | `TotalCharges` | ≈ `tenure × MonthlyCharges`; multicolinealidad. Excluirla no reduce el ROC-AUC en CV (0,846 → 0,845) y mejora la interpretabilidad |
-| Recodificación | “No internet/phone service” → “No”; `SeniorCitizen` → Yes/No | Evitar columnas redundantes tras One-Hot |
-| Ingeniería de variables | `num_servicios`, `contrato_ord`, `fibra`, `pago_auto` | Variables resumen para la segmentación K-Means |
-| Codificación | One-Hot Encoding (`drop="if_binary"`, `handle_unknown="ignore"`) → 24 variables | Requerido por scikit-learn; robusto a categorías nuevas |
-| Escalado | `StandardScaler` en `tenure` y `MonthlyCharges` | Necesario para Regresión Logística y K-Means |
-| Partición | 80/20 **estratificada** (`random_state=42`): 5.634 train / 1.409 test | Mantiene 26,5 % de churn en ambos |
-| Anti-fuga | Todo dentro de un `Pipeline` + `ColumnTransformer` | El preprocesamiento se ajusta solo con train (y dentro de cada fold) |
+| Modelo | Por qué lo elegimos |
+|---|---|
+| Dummy | Lo usamos como base: siempre predice "No". Los otros modelos tienen que superarlo. |
+| **Regresión Logística** | Es simple y se puede interpretar con sus coeficientes. |
+| **Random Forest** | Puede captar relaciones más complejas entre las variables. |
 
-## 8. Modelos supervisados
+- En los dos usamos `class_weight="balanced"` por el desbalance.
+- Buscamos los mejores hiperparámetros con **GridSearchCV** (5 folds, métrica ROC-AUC).
+- En vez de usar 0,5 como umbral, elegimos el que daba el mejor F1 con un recall de al menos 0,75 (0,557 para la logística y 0,541 para el Random Forest).
 
-| Modelo | Justificación de la selección | Hiperparámetros explorados | Mejor configuración |
-|---|---|---|---|
-| Baseline (`DummyClassifier`) | Referencia mínima | — | Clase mayoritaria |
-| **Regresión Logística** | Modelo lineal interpretable (odds ratio), estándar en churn, probabilidades bien calibradas | `C` ∈ {0,01…5}, penalización L1/L2 | `C=5`, L2, `class_weight="balanced"` |
-| **Random Forest** | Captura no linealidades e interacciones (contrato × antigüedad), robusto a multicolinealidad, entrega importancia de variables | `max_depth`, `min_samples_leaf`, `max_features` (300 árboles) | `max_depth=None`, `min_samples_leaf=20`, `max_features=0.3`, `class_weight="balanced"` |
+### Resultados en test
 
-- **Validación:** `GridSearchCV` con `StratifiedKFold` (5 folds), métrica ROC-AUC.
-- **Umbral de decisión:** elegido con predicciones *out-of-fold* en train (sin tocar test) maximizando F1 sujeto a recall ≥ 0,75 → 0,557 (RL) y 0,541 (RF).
+| Modelo | Accuracy | Precision | Recall | F1 | ROC-AUC | Lift top 20 % |
+|---|---|---|---|---|---|---|
+| Dummy | 0,735 | 0,000 | 0,000 | 0,000 | 0,500 | 1,05 |
+| Regresión Logística | 0,752 | 0,524 | 0,733 | 0,611 | 0,839 | 2,51 |
+| **Random Forest** | **0,765** | **0,541** | **0,759** | **0,632** | **0,846** | 2,49 |
 
-### Resultados en test (1.409 clientes no vistos)
-
-| Modelo | Accuracy | Precision | Recall | F1 | ROC-AUC | PR-AUC | Lift top 20 % |
-|---|---|---|---|---|---|---|---|
-| Baseline (Dummy) | 0,735 | 0,000 | 0,000 | 0,000 | 0,500 | 0,265 | 1,05 |
-| Regresión Logística | 0,752 | 0,524 | 0,733 | 0,611 | 0,839 | 0,629 | 2,51 |
-| **Random Forest** | **0,765** | **0,541** | **0,759** | **0,632** | **0,846** | **0,651** | 2,49 |
-
-ROC-AUC en validación cruzada: RL 0,845 ± 0,012 · RF **0,848 ± 0,010**.
-
-![ROC, PR y comparación](images/07_roc_pr_comparacion.png)
+![ROC y comparación](images/07_roc_pr_comparacion.png)
 ![Matrices de confusión](images/08_matrices_confusion.png)
 
-**Modelo final: Random Forest.** Tiene el mejor ROC-AUC en CV (criterio fijado antes de ver el test), es el único que cumple el KPI de recall y obtiene mejor F1 y PR-AUC. Como la diferencia con la Regresión Logística es pequeña, ésta se mantiene como **modelo explicativo** para comunicar la dirección de cada factor.
+**Elegimos el Random Forest** porque tuvo el mejor ROC-AUC en validación cruzada (0,848 vs 0,845) y es el único que cumple el KPI de recall. La diferencia con la logística es chica, así que la usamos para explicar qué variables influyen.
 
 ![Importancia de variables](images/09_importancia_variables.png)
 
-Ambos modelos coinciden: **contrato mes a mes, antigüedad, contrato de 2 años (protector), fibra óptica, cargo mensual y pago con cheque electrónico** son las variables más influyentes. En la Regresión Logística, tener fibra multiplica las odds de abandono por ≈ 3,9 y el contrato de 2 años las reduce a ≈ 0,32.
+Los dos modelos coinciden en que lo más importante es el **tipo de contrato, la antigüedad, la fibra óptica, el cargo mensual y el método de pago**. Según la logística, tener fibra multiplica por **3,9** las chances de irse, y tener contrato de 2 años las reduce a un tercio (**0,32**).
 
-## 9. Modelo no supervisado: segmentación K-Means
+## 8. Modelo no supervisado: K-Means
 
-- **Variables (estandarizadas):** `tenure`, `MonthlyCharges`, `num_servicios`, `contrato_ord`, `fibra`, `pago_auto`. **No se usa `Churn`** para formar los grupos.
-- **Elección de k:** método del codo + silueta (k = 2…8). Se eligió **k = 4** (codo entre 3 y 4, silueta 0,33 > k = 2 y 3, segmentos accionables).
+Agrupamos a los clientes **sin usar la columna Churn**, con estas variables escaladas: antigüedad, cargo mensual, número de servicios, tipo de contrato, si tiene fibra y si paga automático.
+
+Para elegir el número de grupos usamos el **método del codo** y la **silueta**. Elegimos **k = 4** porque ahí está el codo y los grupos se pueden interpretar bien.
 
 ![Elección de k](images/10_eleccion_k.png)
 ![Segmentos](images/11_segmentos_kmeans.png)
 ![Centroides](images/12_centroides_kmeans.png)
 
-| Segmento | % cartera | Perfil | Churn | % ingreso en riesgo | Acción propuesta |
-|---|---|---|---|---|---|
-| **S0 Fibra mes a mes** | 31 % | ~21 meses, USD 87/mes, 100 % fibra, 94 % mensual | **54 %** | **72 %** | Prioridad 1: migración a contrato anual con beneficio, revisar precio/calidad de fibra, pago automático |
-| S1 Básicos nuevos mes a mes | 29 % | ~14 meses, USD 40/mes, DSL o solo teléfono | 25 % | 15 % | Onboarding primer año, venta cruzada de seguridad/soporte |
-| S3 Premium leales | 24 % | ~60 meses, USD 91/mes, 5 servicios, contrato largo | 10 % | 12 % | Fidelización y renovación anticipada |
-| S2 Básicos con contrato | 17 % | ~47 meses, USD 30/mes, contrato 1–2 años | 3 % | 1 % | Sin inversión en retención; upselling |
-
-## 10. Interpretación del desempeño y traducción al negocio
-
-**Lectura de las métricas del modelo final:**
-- **Recall 0,76:** de cada 100 clientes que realmente abandonan, el modelo detecta 76.
-- **Precisión 0,54:** de cada 100 clientes señalados, 54 efectivamente abandonan (al azar serían 26,5).
-- **ROC-AUC 0,85:** si se toma un cliente que abandona y uno que no, el modelo asigna mayor riesgo al primero el 85 % de las veces.
-- **Lift 2,5:** contactar al 20 % de mayor riesgo es 2,5 veces más efectivo que contactar al azar.
-
-**Simulación económica** (supuestos: USD 50 por contacto, 35 % de éxito de retención, valor = 12 meses de `MonthlyCharges`):
-
-| Escenario (test, 1.409 clientes) | Contactados | Churners detectados | % ingreso en riesgo capturado | Beneficio neto (USD) |
+| Grupo | % clientes | Cómo son | Churn | Qué hacer |
 |---|---|---|---|---|
-| No hacer nada | 0 | 0 | 0 % | 0 |
-| Contactar a todos | 1.409 | 374 | 100 % | 43.853 |
-| Regresión Logística | 523 | 274 | 77 % | 62.330 |
-| **Random Forest** | **525** | **284** | **78 %** | **63.255** |
+| **S0 Fibra mes a mes** | 31 % | Fibra, contrato mensual, ~USD 87 al mes | **54 %** | Prioridad: ofrecer contrato anual con descuento |
+| S1 Básicos nuevos mes a mes | 29 % | DSL o solo teléfono, poco tiempo | 25 % | Ofrecer soporte y seguridad, acompañarlos el primer año |
+| S3 Premium leales | 24 % | Muchos servicios, ~5 años como clientes | 10 % | Programa de fidelización |
+| S2 Básicos con contrato | 17 % | Contrato largo, cargo bajo | 3 % | No gastar en retenerlos |
+
+## 9. Interpretación de resultados
+
+- **Recall 0,76:** de cada 100 clientes que se van, el modelo detecta 76.
+- **Precisión 0,54:** de cada 100 clientes que el modelo marca, 54 realmente se van (si eligiéramos al azar serían 26).
+- **ROC-AUC 0,85:** el modelo ordena bien a los clientes según su riesgo.
+- **Lift 2,5:** contactar al 20 % más riesgoso es 2,5 veces mejor que elegir al azar.
+
+**Simulación de una campaña.** Supusimos que contactar a un cliente cuesta USD 50, que la oferta funciona en el 35 % de los casos y que retener a un cliente vale 12 meses de su cargo mensual:
+
+| Estrategia (1.409 clientes de test) | Contactados | Clientes en riesgo detectados | Beneficio neto (USD) |
+|---|---|---|---|
+| No hacer nada | 0 | 0 | 0 |
+| Contactar a todos | 1.409 | 374 | 43.853 |
+| Regresión Logística | 523 | 274 | 62.330 |
+| **Random Forest** | **525** | **284** | **63.255** |
 
 ![Beneficio vs umbral](images/13_beneficio_vs_umbral.png)
 
-El umbral es una **decisión de negocio**: con estos costos, bajarlo a ≈ 0,34 maximizaría el beneficio (≈ USD 68.500) a cambio de contactar más clientes. Escalado a toda la cartera, el potencial es del orden de USD 300.000 por ciclo de campaña.
+Usar el modelo da un **44 % más de beneficio** que contactar a todos. Si contactar fuera más barato, convendría bajar el umbral a ≈ 0,34.
 
-## 11. Evaluación del impacto ético
+## 10. Revisión ética
 
-| Aspecto | Medida adoptada |
-|---|---|
-| Privacidad | Se elimina `customerID`; no hay datos de contacto. Uso alineado con la normativa chilena de datos personales (Ley 19.628 / Ley 21.719) |
-| Atributos protegidos | `gender` excluido del modelo; usado solo para auditoría |
-| Equidad (género) | Recall 0,73 (F) vs 0,79 (M): 5,9 p.p., **no significativa** (test z, p = 0,18). FPR similar (0,22 vs 0,24). Se recomienda monitorear |
-| Equidad (adultos mayores) | Mayor recall (0,85) y FPR (0,42) por su mayor churn real (44 % vs 23 %). La acción es ofrecer un beneficio, por lo que no los perjudica; cuidar frecuencia y canal de contacto |
-| Uso responsable | El score se usa solo para retención (nunca para subir precios o negar servicios), con revisión humana y reentrenamiento periódico |
+- Sacamos `customerID` y `gender` del modelo, y el dataset no tiene nombres ni datos de contacto.
+- **Género:** el recall es 0,73 para mujeres y 0,79 para hombres. La diferencia (5,9 puntos) pasa un poco la meta, pero el test estadístico dice que **no es significativa** (p = 0,18). Igual hay que seguir revisándola.
+- **Adultos mayores:** el modelo los marca más porque de verdad se van más (44 % vs 23 %). Como el modelo solo se usa para **ofrecer beneficios**, esto no los perjudica.
+- El modelo no debería usarse para subir precios o negar servicios.
 
-## 12. Conclusiones y recomendaciones
+## 11. Conclusiones y recomendaciones
 
-1. El Random Forest cumple los KPIs técnicos y de negocio, y supera claramente a la línea base y a la estrategia de contactar a todos.
-2. **Migrar clientes mes a mes a contratos anuales**, priorizando el segmento S0 (fibra mes a mes).
-3. **Revisar la oferta de fibra óptica** (precio/calidad).
-4. **Incluir seguridad online y soporte técnico** en paquetes de retención.
-5. **Incentivar el pago automático** y **reforzar el onboarding** del primer año.
-6. Medir la campaña con un **grupo de control** y reentrenar trimestralmente.
+El Random Forest cumple los KPIs y es mucho mejor que contactar a todos los clientes. Nuestras recomendaciones son:
 
-**Limitaciones:** una sola fotografía temporal, sin datos de uso ni reclamos; supuestos económicos estimados; pocos casos para auditar subgrupos. **Próximos pasos:** Gradient Boosting, calibración de probabilidades, variables de comportamiento.
+1. Ofrecer a los clientes con contrato mes a mes que se pasen a un contrato anual, partiendo por el grupo S0.
+2. Revisar el precio y la calidad del servicio de fibra óptica.
+3. Incluir soporte técnico y seguridad online en las ofertas de retención.
+4. Incentivar el pago automático.
+5. Acompañar más a los clientes durante su primer año.
+
+**Limitaciones:** los datos son de un solo momento, no tienen información de reclamos ni de uso, y los costos de la campaña son supuestos nuestros.
 
 ---
 
@@ -241,47 +207,29 @@ El umbral es una **decisión de negocio**: con estos costos, bajarlo a ≈ 0,34 
 
 ```
 telco_churn_ml/
-├── README.md                     ← este informe técnico
-├── requirements.txt              ← dependencias
+├── README.md                  ← este informe
+├── requirements.txt           ← librerías necesarias
 ├── data/
 │   ├── Telco_Customer_Churn_Dataset.csv   ← datos originales
-│   └── scoring_clientes_test.csv          ← salida: clientes de test priorizados por riesgo
+│   └── scoring_clientes_test.csv          ← clientes de test ordenados por riesgo
 ├── notebooks/
-│   └── churn_telco.ipynb         ← notebook ejecutado, documentado por fases CRISP-DM
+│   └── churn_telco.ipynb      ← notebook con todo el desarrollo
 ├── models/
-│   ├── modelo_churn_final.joblib ← Pipeline (preprocesamiento + Random Forest)
-│   ├── kmeans_segmentacion.joblib← scaler + K-Means + nombres de segmentos
-│   ├── config_modelo.json        ← umbral, variables y métricas
-│   └── metricas_test.csv         ← tabla comparativa de modelos
-├── images/                       ← 13 gráficos generados por el notebook
+│   ├── modelo_churn_final.joblib    ← modelo final (Random Forest con su preprocesamiento)
+│   ├── kmeans_segmentacion.joblib   ← modelo K-Means
+│   ├── config_modelo.json           ← umbral, variables y métricas
+│   └── metricas_test.csv            ← comparación de modelos
+├── images/                    ← gráficos del notebook
 └── presentacion/
-    └── guion_presentacion.md     ← guion de 10 min y preguntas de defensa
+    └── guion_presentacion.md  ← guion para la presentación
 ```
 
-## Cómo reproducir
+## Cómo ejecutarlo
 
-```bash
-# 1. Crear entorno e instalar dependencias
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+1. Instalar las librerías:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Abrir `notebooks/churn_telco.ipynb` en Jupyter y ejecutar todas las celdas (*Kernel → Restart & Run All*).
 
-# 2. Ejecutar el notebook (desde la carpeta notebooks/)
-cd notebooks
-jupyter notebook churn_telco.ipynb   # Kernel → Restart & Run All
-```
-
-- Las rutas son relativas (`../data`, `../models`, `../images`) y la semilla es fija (`RANDOM_STATE = 42`): los resultados son reproducibles.
-- El notebook vuelve a generar todos los gráficos de `images/` y los archivos de `models/` (≈ 2 min).
-- Los `.joblib` se crearon con scikit-learn 1.9; si se usa otra versión, basta con re-ejecutar el notebook para regenerarlos.
-
-**Uso del modelo guardado:**
-```python
-import joblib, json, pandas as pd
-modelo = joblib.load("models/modelo_churn_final.joblib")
-umbral = json.load(open("models/config_modelo.json"))["umbral"]
-# clientes_nuevos: DataFrame con las columnas originales del CSV, transformado con la
-# función ingenieria_variables() del notebook (§3) para aplicar las mismas recodificaciones
-prob = modelo.predict_proba(clientes_nuevos)[:, 1]
-contactar = prob >= umbral
-```
+El notebook usa rutas relativas y `random_state = 42`, así que siempre da los mismos resultados. Al ejecutarlo se vuelven a crear los gráficos y los archivos de `models/`.
