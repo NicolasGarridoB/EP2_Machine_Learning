@@ -1,0 +1,36 @@
+{
+  "modelo_final": "Random Forest",
+  "umbral": 0.5411,
+  "features_numericas": [
+    "tenure",
+    "MonthlyCharges"
+  ],
+  "features_categoricas": [
+    "SeniorCitizen",
+    "Partner",
+    "Dependents",
+    "PhoneService",
+    "MultipleLines",
+    "InternetService",
+    "OnlineSecurity",
+    "OnlineBackup",
+    "DeviceProtection",
+    "TechSupport",
+    "StreamingTV",
+    "StreamingMovies",
+    "Contract",
+    "PaperlessBilling",
+    "PaymentMethod"
+  ],
+  "random_state": 42,
+  "metricas_test": {
+    "Umbral": 0.541,
+    "Accuracy": 0.765,
+    "Precision": 0.541,
+    "Recall": 0.759,
+    "F1": 0.632,
+    "ROC-AUC": 0.846,
+    "PR-AUC": 0.651,
+    "Lift top 20%": 2.494
+  }
+}
